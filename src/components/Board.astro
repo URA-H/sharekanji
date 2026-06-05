@@ -1,0 +1,258 @@
+---
+/**
+ * 6 行 × 4 マスのゲーム盤と入力 UI。
+ * クライアント側のロジックはこのコンポーネント内の <script type="module"> で完結する。
+ * server-only バンドルとして game.ts を import するために astro:scripts/before-hydration を経由する。
+ */
+import { MAX_GUESSES, WORD_LENGTH } from "../lib/game";
+---
+
+<section
+  id="board-root"
+  class="space-y-6"
+  data-word-length={WORD_LENGTH}
+  data-max-guesses={MAX_GUESSES}
+>
+  <!-- グリッド -->
+  <div
+    id="grid"
+    class="grid gap-2 mx-auto"
+    style={`grid-template-rows: repeat(${MAX_GUESSES}, minmax(0, 1fr)); width: max-content;`}
+  >
+    {
+      Array.from({ length: MAX_GUESSES }).map((_, row) => (
+        <div
+          class="grid gap-2"
+          style={`grid-template-columns: repeat(${WORD_LENGTH}, minmax(0, 1fr));`}
+          data-row={row}
+        >
+          {Array.from({ length: WORD_LENGTH }).map((_, col) => (
+            <div
+              class="cell aspect-square w-16 md:w-20 flex items-center justify-center text-3xl md:text-4xl font-semibold border border-zinc-300 dark:border-zinc-700 rounded-md"
+              data-row={row}
+              data-col={col}
+            >
+              <span class="cell-text"></span>
+            </div>
+          ))}
+        </div>
+      ))
+    }
+  </div>
+
+  <!-- 入力 -->
+  <form id="guess-form" class="flex items-center gap-2 max-w-md mx-auto">
+    <input
+      id="guess-input"
+      type="text"
+      inputmode="text"
+      autocomplete="off"
+      maxlength={WORD_LENGTH}
+      placeholder="4字熟語を入力"
+      class="flex-1 px-4 py-3 rounded-md border border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-lg focus:outline-none focus:ring-2 focus:ring-zinc-500"
+    />
+    <button
+      type="submit"
+      id="submit-btn"
+      class="px-5 py-3 rounded-md bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      回答
+    </button>
+  </form>
+
+  <p
+    id="status-line"
+    class="text-center text-sm text-zinc-600 dark:text-zinc-400 min-h-[1.25rem]"
+    aria-live="polite"
+  ></p>
+
+  <!-- 終了パネル -->
+  <div
+    id="result-panel"
+    class="hidden max-w-md mx-auto rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 p-5 space-y-3"
+  >
+    <h2 id="result-title" class="text-lg font-semibold"></h2>
+    <p id="result-meaning" class="text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed"></p>
+    <pre
+      id="share-preview"
+      class="text-sm font-mono whitespace-pre-wrap bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded p-3"
+    ></pre>
+    <div class="flex flex-wrap gap-2">
+      <button
+        id="copy-btn"
+        type="button"
+        class="px-4 py-2 rounded-md bg-zinc-900 dark:bg-zinc-100 text-zinc-100 dark:text-zinc-900 font-medium hover:opacity-90"
+      >
+        結果をコピー
+      </button>
+      <a
+        id="share-x"
+        target="_blank"
+        rel="noopener noreferrer"
+        class="px-4 py-2 rounded-md border border-zinc-300 dark:border-zinc-700 font-medium hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      >
+        X で共有
+      </a>
+    </div>
+  </div>
+</section>
+
+<script>
+  import {
+    evaluateGuess,
+    getPuzzleForDate,
+    isValidGuess,
+    buildShareText,
+    MAX_GUESSES,
+    WORD_LENGTH,
+    type EvaluatedGuess,
+    type LetterState,
+  } from "../lib/game";
+
+  // ────────────────────────────────────────────────
+  // 当日パズルの確定 + localStorage 同期
+  // ────────────────────────────────────────────────
+  const { puzzleNumber, answer } = getPuzzleForDate();
+  const STORAGE_KEY = `sharekanji:${puzzleNumber}`;
+  const SITE_URL = `${window.location.origin}${window.location.pathname}`;
+
+  type Persisted = { guesses: EvaluatedGuess[]; solved: boolean; failed: boolean };
+  function loadState(): Persisted {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) return JSON.parse(raw) as Persisted;
+    } catch {
+      // ignore
+    }
+    return { guesses: [], solved: false, failed: false };
+  }
+  function saveState(s: Persisted): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+    } catch {
+      // ignore
+    }
+  }
+
+  let state = loadState();
+
+  // ────────────────────────────────────────────────
+  // DOM ヘルパー
+  // ────────────────────────────────────────────────
+  const grid = document.getElementById("grid")!;
+  const input = document.getElementById("guess-input") as HTMLInputElement;
+  const form = document.getElementById("guess-form") as HTMLFormElement;
+  const statusLine = document.getElementById("status-line")!;
+  const resultPanel = document.getElementById("result-panel")!;
+  const resultTitle = document.getElementById("result-title")!;
+  const resultMeaning = document.getElementById("result-meaning")!;
+  const sharePreview = document.getElementById("share-preview")!;
+  const copyBtn = document.getElementById("copy-btn") as HTMLButtonElement;
+  const shareX = document.getElementById("share-x") as HTMLAnchorElement;
+  const submitBtn = document.getElementById("submit-btn") as HTMLButtonElement;
+
+  function paintCell(row: number, col: number, char: string, st: LetterState | null) {
+    const cell = grid.querySelector(
+      `.cell[data-row="${row}"][data-col="${col}"]`,
+    ) as HTMLElement | null;
+    if (!cell) return;
+    const text = cell.querySelector(".cell-text") as HTMLElement | null;
+    if (text) text.textContent = char;
+    cell.classList.remove(
+      "bg-emerald-500",
+      "bg-amber-400",
+      "bg-zinc-400",
+      "text-white",
+      "border-emerald-500",
+      "border-amber-400",
+      "border-zinc-400",
+    );
+    if (st === "hit") {
+      cell.classList.add("bg-emerald-500", "border-emerald-500", "text-white");
+    } else if (st === "present") {
+      cell.classList.add("bg-amber-400", "border-amber-400", "text-white");
+    } else if (st === "miss") {
+      cell.classList.add("bg-zinc-400", "border-zinc-400", "text-white");
+    }
+  }
+
+  function paintFromState() {
+    state.guesses.forEach((g, row) => {
+      [...g.word].forEach((ch, col) => paintCell(row, col, ch, g.states[col]!));
+    });
+  }
+
+  function renderResultPanel() {
+    const done = state.solved || state.failed;
+    if (!done) {
+      resultPanel.classList.add("hidden");
+      return;
+    }
+    resultPanel.classList.remove("hidden");
+    resultTitle.textContent = state.solved
+      ? `クリア！  #${puzzleNumber}  ${state.guesses.length}/${MAX_GUESSES}`
+      : `本日の答え: ${answer.word}（${answer.reading}）`;
+    resultMeaning.textContent = `${answer.word}（${answer.reading}） — ${answer.meaning}`;
+    const text = buildShareText(puzzleNumber, state.guesses, state.solved, SITE_URL);
+    sharePreview.textContent = text;
+    shareX.href =
+      "https://twitter.com/intent/tweet?text=" + encodeURIComponent(text);
+    form.classList.add("opacity-50", "pointer-events-none");
+    input.disabled = true;
+    submitBtn.disabled = true;
+  }
+
+  function setStatus(msg: string) {
+    statusLine.textContent = msg;
+  }
+
+  // ────────────────────────────────────────────────
+  // 送信
+  // ────────────────────────────────────────────────
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    if (state.solved || state.failed) return;
+    const guess = input.value.trim();
+    if (guess.length !== WORD_LENGTH) {
+      setStatus(`${WORD_LENGTH} 字で入力してください`);
+      return;
+    }
+    if (!isValidGuess(guess)) {
+      setStatus("辞書に無い 4字熟語です");
+      return;
+    }
+    const result = evaluateGuess(guess, answer.word);
+    state.guesses.push(result);
+    if (result.states.every((s) => s === "hit")) {
+      state.solved = true;
+    } else if (state.guesses.length >= MAX_GUESSES) {
+      state.failed = true;
+    }
+    saveState(state);
+    paintFromState();
+    renderResultPanel();
+    if (!state.solved && !state.failed) {
+      setStatus("");
+    }
+    input.value = "";
+    input.focus();
+  });
+
+  copyBtn.addEventListener("click", async () => {
+    const text = buildShareText(puzzleNumber, state.guesses, state.solved, SITE_URL);
+    try {
+      await navigator.clipboard.writeText(text);
+      copyBtn.textContent = "コピーしました";
+      setTimeout(() => {
+        copyBtn.textContent = "結果をコピー";
+      }, 1500);
+    } catch {
+      setStatus("コピーに失敗しました。手動で選択してください。");
+    }
+  });
+
+  // 初期描画
+  paintFromState();
+  renderResultPanel();
+  input.focus();
+</script>

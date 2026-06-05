@@ -1,0 +1,66 @@
+---
+import "../styles/global.css";
+import Board from "../components/Board.astro";
+import { DICTIONARY } from "../lib/game";
+
+// SSR build 時の puzzleNumber/answer は表示しない（ネタバレ防止）
+// クライアント側で当日の puzzleNumber を表示する
+const totalWords = DICTIONARY.length;
+---
+
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ShareKanji — 4字熟語を当てる daily パズル</title>
+    <meta
+      name="description"
+      content="4字熟語を 6 回で当てる daily Wordle。1 日 1 問、結果は絵文字グリッドで X に共有できます。"
+    />
+    <meta property="og:title" content="ShareKanji — 4字熟語を当てる daily パズル" />
+    <meta property="og:description" content="1日1問、4字熟語ワードル。" />
+  </head>
+  <body>
+    <main class="mx-auto max-w-2xl px-4 py-10">
+      <header class="text-center mb-8">
+        <p class="font-mono text-xs text-zinc-500 dark:text-zinc-400 mb-1">
+          ShareKanji
+        </p>
+        <h1 class="text-3xl md:text-4xl font-bold tracking-tight mb-2">
+          4字熟語を 6 回で当てる
+        </h1>
+        <p class="text-sm text-zinc-600 dark:text-zinc-400">
+          1 日 1 問 / 全 {totalWords} 問 / 結果は絵文字グリッドで共有
+        </p>
+      </header>
+
+      <Board />
+
+      <section class="mt-10 text-sm text-zinc-600 dark:text-zinc-400 space-y-3 max-w-md mx-auto">
+        <h2 class="text-zinc-800 dark:text-zinc-200 font-semibold">遊び方</h2>
+        <ul class="list-disc list-inside space-y-1 leading-relaxed">
+          <li>辞書にある 4字熟語を入力して送信</li>
+          <li><span class="inline-block w-3 h-3 bg-emerald-500 rounded-sm align-middle"></span> 緑 — 正しい位置に正しい字</li>
+          <li><span class="inline-block w-3 h-3 bg-amber-400 rounded-sm align-middle"></span> 黄 — 字は含むが位置が違う</li>
+          <li><span class="inline-block w-3 h-3 bg-zinc-400 rounded-sm align-middle"></span> 灰 — 含まれない</li>
+          <li>6 回以内に当てればクリア</li>
+        </ul>
+      </section>
+
+      <footer class="mt-16 pt-6 border-t border-zinc-200 dark:border-zinc-800 text-xs text-zinc-500 dark:text-zinc-400 text-center space-y-2">
+        <p>
+          repository:
+          <a
+            href="https://github.com/URA-H/sharekanji"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="underline underline-offset-2 hover:text-zinc-700 dark:hover:text-zinc-300"
+          >
+            URA-H/sharekanji
+          </a>
+        </p>
+        <p>個人開発の作品です。出題はプリセット辞書から日次で 1 問選んでいます。</p>
+      </footer>
+    </main>
+  </body>
+</html>
