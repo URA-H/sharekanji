@@ -60,11 +60,13 @@ import { MAX_GUESSES, WORD_LENGTH } from "../lib/game";
     </button>
   </form>
 
-  <p
+  <!-- 状態メッセージ（エラー/案内）。デフォルトは非表示で、内容がある時だけ目立つ形で出す -->
+  <div
     id="status-line"
-    class="text-center text-sm text-zinc-600 dark:text-zinc-400 min-h-[1.25rem]"
+    class="hidden text-center font-medium rounded-md py-2 px-4 max-w-md mx-auto"
     aria-live="polite"
-  ></p>
+    role="status"
+  ></div>
 
   <!-- 終了パネル -->
   <div
@@ -202,13 +204,64 @@ import { MAX_GUESSES, WORD_LENGTH } from "../lib/game";
     submitBtn.disabled = true;
   }
 
-  function setStatus(msg: string) {
+  function setStatus(msg: string, kind: "error" | "info" = "error") {
+    if (!msg) {
+      statusLine.classList.add("hidden");
+      statusLine.textContent = "";
+      return;
+    }
     statusLine.textContent = msg;
+    statusLine.classList.remove(
+      "hidden",
+      "bg-red-100",
+      "text-red-800",
+      "dark:bg-red-900/40",
+      "dark:text-red-200",
+      "bg-zinc-100",
+      "text-zinc-800",
+      "dark:bg-zinc-800",
+      "dark:text-zinc-200",
+    );
+    if (kind === "error") {
+      statusLine.classList.add(
+        "bg-red-100",
+        "text-red-800",
+        "dark:bg-red-900/40",
+        "dark:text-red-200",
+      );
+    } else {
+      statusLine.classList.add(
+        "bg-zinc-100",
+        "text-zinc-800",
+        "dark:bg-zinc-800",
+        "dark:text-zinc-200",
+      );
+    }
+    // 3秒で自動的にフェードアウト
+    window.clearTimeout((setStatus as any)._timer);
+    (setStatus as any)._timer = window.setTimeout(() => {
+      statusLine.classList.add("hidden");
+    }, 3000);
   }
 
   // ────────────────────────────────────────────────
   // 送信
   // ────────────────────────────────────────────────
+  // IME 変換中の Enter で submit を発火させない
+  let imeComposing = false;
+  input.addEventListener("compositionstart", () => {
+    imeComposing = true;
+  });
+  input.addEventListener("compositionend", () => {
+    imeComposing = false;
+  });
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && imeComposing) {
+      // IME 変換確定の Enter は呑む
+      e.stopPropagation();
+    }
+  });
+
   form.addEventListener("submit", (e) => {
     e.preventDefault();
     if (state.solved || state.failed) return;
@@ -217,10 +270,9 @@ import { MAX_GUESSES, WORD_LENGTH } from "../lib/game";
       setStatus(`${WORD_LENGTH} 字で入力してください`);
       return;
     }
-    if (!isValidGuess(guess)) {
-      setStatus("辞書に無い 4字熟語です");
-      return;
-    }
+    // v0.1: 推測語の辞書チェックは外す（辞書がまだ 70 件と少ないため）
+    // 4字なら何でも受け入れる。今後辞書が充実したら復活させる
+    void isValidGuess; // suppress unused warning
     const result = evaluateGuess(guess, answer.word);
     state.guesses.push(result);
     if (result.states.every((s) => s === "hit")) {
