@@ -14,6 +14,7 @@
 ## 目次
 
 - [どんなアプリか](#どんなアプリか)
+- [スクリーンショット](#スクリーンショット)
 - [ルール](#ルール)
 - [使っている技術](#使っている技術)
 - [仕組みの中身](#仕組みの中身)
@@ -41,6 +42,17 @@ https://ura-h.github.io/sharekanji/
 - **ログイン不要**。`localStorage` に当日進捗を残すだけ
 - **辞書は 70+ の有名 4字熟語**。日々増やしていけます
 - **絵文字グリッド**は文字色を伝えず難易度感だけ共有 → ネタバレなしで誇示可能
+
+---
+
+## スクリーンショット
+
+| 画面 | 説明 |
+|------|------|
+| ![Desktop](./docs/screenshots/index-desktop.png) | プレイ画面（デスクトップ） |
+| ![Mobile](./docs/screenshots/index-mobile.png) | プレイ画面（モバイル） |
+
+撮影は [routeshot](https://github.com/URA-H/routeshot) CLI で生成（設定は `routeshot.config.json`）。
 
 ---
 
